@@ -1,0 +1,203 @@
+from __future__ import annotations
+
+import base64
+import re
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Optional
+
+import requests
+
+USER_AGENT = "vault-editor/0.1.0 (https://example.com; contact=local)"
+
+WIKI_API = "https://commons.wikimedia.org/w/api.php"
+OPEN_LIBRARY_SEARCH = "https://openlibrary.org/search.json"
+OPEN_LIBRARY_COVER = "https://covers.openlibrary.org/b/id/{cover_id}-L.jpg"
+OPENAI_IMAGE_API = "https://api.openai.com/v1/images/generations"
+TMDB_SEARCH_MOVIE = "https://api.themoviedb.org/3/search/movie"
+TMDB_IMAGE_BASE = "https://image.tmdb.org/t/p/w500"
+
+
+@dataclass(frozen=True)
+class ImageResult:
+    title: str
+    url: str
+
+
+def _sanitize_filename(name: str) -> str:
+    name = re.sub(r"\s+", "_", name)
+    name = re.sub(r"[^A-Za-z0-9._-]", "", name)
+    return name[:120] if name else "image"
+
+
+def search_wikimedia(query: str) -> Optional[ImageResult]:
+    params = {
+        "action": "query",
+        "format": "json",
+        "list": "search",
+        "srsearch": query,
+        "srnamespace": 6,
+        "srlimit": 1,
+    }
+    response = requests.get(
+        WIKI_API, params=params, timeout=20, headers={"User-Agent": USER_AGENT}
+    )
+    response.raise_for_status()
+    data = response.json()
+    results = data.get("query", {}).get("search", [])
+    if not results:
+        return None
+
+    title = results[0]["title"]
+    info_params = {
+        "action": "query",
+        "format": "json",
+        "titles": title,
+        "prop": "imageinfo",
+        "iiprop": "url",
+    }
+    info_response = requests.get(
+        WIKI_API, params=info_params, timeout=20, headers={"User-Agent": USER_AGENT}
+    )
+    info_response.raise_for_status()
+    info_data = info_response.json()
+    pages = info_data.get("query", {}).get("pages", {})
+    for page in pages.values():
+        imageinfo = page.get("imageinfo")
+        if imageinfo:
+            url = imageinfo[0].get("url")
+            if url:
+                return ImageResult(title=title, url=url)
+    return None
+
+
+def search_open_library_cover(query: str) -> Optional[ImageResult]:
+    params = {
+        "title": query,
+        "limit": 1,
+        "fields": "title,cover_i",
+    }
+    response = requests.get(
+        OPEN_LIBRARY_SEARCH, params=params, timeout=20, headers={"User-Agent": USER_AGENT}
+    )
+    response.raise_for_status()
+    data = response.json()
+    docs = data.get("docs", [])
+    if not docs:
+        return None
+
+    cover_id = docs[0].get("cover_i")
+    title = docs[0].get("title") or query
+    if not cover_id:
+        return None
+
+    url = OPEN_LIBRARY_COVER.format(cover_id=cover_id)
+    return ImageResult(title=title, url=url)
+
+
+def _tmdb_headers(api_key: str) -> dict[str, str]:
+    if api_key.startswith("ey"):
+        return {"Authorization": f"Bearer {api_key}", "User-Agent": USER_AGENT}
+    return {"User-Agent": USER_AGENT}
+
+
+def search_tmdb_poster(query: str, api_key: str) -> Optional[ImageResult]:
+    if not api_key:
+        return None
+
+    params = {"query": query, "include_adult": "false", "language": "en-US"}
+    if not api_key.startswith("ey"):
+        params["api_key"] = api_key
+
+    response = requests.get(
+        TMDB_SEARCH_MOVIE,
+        params=params,
+        timeout=20,
+        headers=_tmdb_headers(api_key),
+    )
+    response.raise_for_status()
+    data = response.json()
+    results = data.get("results", [])
+    if not results:
+        return None
+
+    poster_path = results[0].get("poster_path")
+    title = results[0].get("title") or query
+    if not poster_path:
+        return None
+
+    url = f"{TMDB_IMAGE_BASE}{poster_path}"
+    return ImageResult(title=title, url=url)
+
+
+def generate_openai_image(prompt: str, api_key: str, dest_dir: Path) -> Path:
+    if not api_key:
+        raise ValueError("OpenAI API key is missing.")
+
+    dest_dir.mkdir(parents=True, exist_ok=True)
+    filename = _sanitize_filename(prompt)[:80]
+    if not filename:
+        filename = "openai_image"
+    target = dest_dir / f"{filename}.png"
+
+    payload = {
+        "model": "gpt-image-1",
+        "prompt": prompt,
+        "size": "1024x1024",
+    }
+    headers = {
+        "Authorization": f"Bearer {api_key}",
+        "Content-Type": "application/json",
+        "User-Agent": USER_AGENT,
+    }
+
+    response = requests.post(OPENAI_IMAGE_API, json=payload, timeout=60, headers=headers)
+    if response.status_code >= 400:
+        raise ValueError(
+            f"OpenAI error {response.status_code}: {response.text.strip()}"
+        )
+    data = response.json()
+    images = data.get("data", [])
+    if not images:
+        raise ValueError("OpenAI image generation returned no image data.")
+
+    b64_json = images[0].get("b64_json")
+    if b64_json:
+        image_bytes = base64.b64decode(b64_json)
+        with open(target, "wb") as f:
+            f.write(image_bytes)
+        return target
+
+    url = images[0].get("url")
+    if not url:
+        raise ValueError("OpenAI image generation returned no usable image data.")
+
+    with requests.get(url, stream=True, timeout=30, headers={"User-Agent": USER_AGENT}) as resp:
+        resp.raise_for_status()
+        with open(target, "wb") as f:
+            for chunk in resp.iter_content(chunk_size=1024 * 64):
+                if chunk:
+                    f.write(chunk)
+
+    return target
+
+
+def download_image(result: ImageResult, dest_dir: Path) -> Path:
+    dest_dir.mkdir(parents=True, exist_ok=True)
+    filename = _sanitize_filename(Path(result.url).name)
+    if not filename.lower().endswith((".png", ".jpg", ".jpeg", ".gif", ".webp")):
+        filename = f"{filename}.jpg"
+
+    target = dest_dir / filename
+    if target.exists():
+        return target
+
+    with requests.get(
+        result.url, stream=True, timeout=30, headers={"User-Agent": USER_AGENT}
+    ) as resp:
+        resp.raise_for_status()
+        with open(target, "wb") as f:
+            for chunk in resp.iter_content(chunk_size=1024 * 64):
+                if chunk:
+                    f.write(chunk)
+    return target

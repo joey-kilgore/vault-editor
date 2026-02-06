@@ -1,0 +1,49 @@
+Metadata-Version: 2.4
+Name: vault-editor
+Version: 0.1.0
+Summary: Tools for working with an Obsidian vault
+Author: Vault Editor
+License: MIT
+Requires-Python: >=3.9
+Description-Content-Type: text/markdown
+Requires-Dist: requests>=2.31.0
+
+# Vault Editor
+
+Small Python tools for working with an Obsidian vault.
+
+## Setup
+1. Install deps:
+   - `pip install -r requirements.txt`
+2. Update `secrets.json` with your vault path and preferences.
+
+## Image insertion tool
+This tool scans notes for image markers and replaces them with an image embed.
+
+**Marker format** (inside your note):
+```
+<!-- IMAGE: golden retriever puppy -->
+```
+
+Optionally add an alt text:
+```
+<!-- IMAGE: golden retriever puppy | Puppy playing in grass -->
+```
+
+### Run (dry-run by default)
+```
+python scripts/insert_images.py
+```
+
+### Apply changes
+```
+python scripts/insert_images.py --apply
+```
+
+### Limit to one note (relative to vault)
+```
+python scripts/insert_images.py --note "Notes/MyNote.md" --apply
+```
+
+## Backups
+Each modified note is backed up to the `backup_dir` (see `secrets.json`) before changes are applied.

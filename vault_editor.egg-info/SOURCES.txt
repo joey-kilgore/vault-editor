@@ -1,0 +1,11 @@
+README.md
+pyproject.toml
+vault_editor/__init__.py
+vault_editor/config.py
+vault_editor/images.py
+vault_editor/notes.py
+vault_editor.egg-info/PKG-INFO
+vault_editor.egg-info/SOURCES.txt
+vault_editor.egg-info/dependency_links.txt
+vault_editor.egg-info/requires.txt
+vault_editor.egg-info/top_level.txt

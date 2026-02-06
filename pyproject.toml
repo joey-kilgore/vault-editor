@@ -1,0 +1,17 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "vault-editor"
+version = "0.1.0"
+description = "Tools for working with an Obsidian vault"
+readme = "README.md"
+requires-python = ">=3.9"
+license = { text = "MIT" }
+authors = [{ name = "Vault Editor" }]
+dependencies = ["requests>=2.31.0"]
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["vault_editor"]
