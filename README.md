@@ -64,3 +64,33 @@ python scripts/insert_images.py --note "Notes/MyNote.md" --apply
 
 ## Backups
 Each modified note is backed up to the `backup_dir` (see `secrets.json`) before changes are applied.
+
+## Needs-info metadata tool
+This tool finds notes tagged `#needsinfo` plus either `#book` or `#movie`, fills metadata, and removes `#needsinfo`.
+It also downloads a cover/poster into your attachments folder and writes an `Image` frontmatter field as a wikilink.
+
+### Book example
+```
+---
+tags: [book, needsinfo]
+title: "Letters to the Church"
+---
+```
+
+### Movie example
+```
+---
+tags: [movie, needsinfo]
+title: "Top Gun Maverick"
+---
+```
+
+### Run (dry-run by default)
+```
+python scripts/needs_info.py
+```
+
+### Apply changes
+```
+python scripts/needs_info.py --apply
+```

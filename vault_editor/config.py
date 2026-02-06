@@ -10,6 +10,7 @@ class Config:
     vault_path: Path
     openai_api_key: str
     tmdb_api_key: str
+    tmdb_region: str
     attachments_dir: str
     backup_dir: str
     confirm_writes: bool
@@ -33,6 +34,7 @@ def load_config(repo_root: Path) -> Config:
         vault_path=vault_path,
         openai_api_key=data.get("openai_api_key", ""),
         tmdb_api_key=data.get("tmdb_api_key", ""),
+        tmdb_region=data.get("tmdb_region", "US"),
         attachments_dir=data.get("attachments_dir", "attachments"),
         backup_dir=data.get("backup_dir", ".vault_backups"),
         confirm_writes=bool(data.get("confirm_writes", True)),
