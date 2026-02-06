@@ -10,7 +10,9 @@ from vault_editor.images import (
     download_image,
     generate_openai_image,
     search_tmdb_poster,
+    search_tmdb_tv_poster,
     search_open_library_cover,
+    search_open_library_isbn,
     search_wikimedia,
 )
 from vault_editor.notes import find_markers, iter_markdown_files, read_note, write_note
@@ -30,8 +32,17 @@ def confirm(prompt: str) -> bool:
     return response in {"y", "yes"}
 
 
-def build_replacement(image_path: Path, vault_path: Path, alt: str | None) -> str:
+def build_replacement(
+    image_path: Path,
+    vault_path: Path,
+    alt: str | None,
+    quoted: bool,
+    quote_char: str | None,
+) -> str:
     rel_path = image_path.relative_to(vault_path).as_posix()
+    if quoted:
+        quote = quote_char or '"'
+        return f"{quote}[[{rel_path}]]{quote}"
     if alt:
         rel_path_url = rel_path.replace(" ", "%20")
         return f"![{alt}]({rel_path_url})"
@@ -44,14 +55,15 @@ def process_note(
     attachments_dir: Path,
     openai_api_key: str,
     tmdb_api_key: str,
-) -> tuple[str, int]:
+) -> tuple[str, int, int]:
     original = read_note(note_path)
     markers = find_markers(original)
     if not markers:
-        return original, 0
+        return original, 0, 0
 
     updated = original
     offset = 0
+    replacements = 0
     for marker in markers:
         image_path: Path | None = None
         if marker.kind == "IMAGE":
@@ -62,8 +74,16 @@ def process_note(
             result = search_open_library_cover(marker.query)
             if result:
                 image_path = download_image(result, attachments_dir)
+        elif marker.kind == "BOOKISBN":
+            result = search_open_library_isbn(marker.query)
+            if result:
+                image_path = download_image(result, attachments_dir)
         elif marker.kind == "MOVIE":
             result = search_tmdb_poster(marker.query, tmdb_api_key)
+            if result:
+                image_path = download_image(result, attachments_dir)
+        elif marker.kind == "TV":
+            result = search_tmdb_tv_poster(marker.query, tmdb_api_key)
             if result:
                 image_path = download_image(result, attachments_dir)
         elif marker.kind == "AIIMAGE":
@@ -77,14 +97,21 @@ def process_note(
         if not image_path:
             continue
 
-        replacement = build_replacement(image_path, vault_path, marker.alt)
+        replacement = build_replacement(
+            image_path,
+            vault_path,
+            marker.alt,
+            marker.quoted,
+            marker.quote_char,
+        )
+        replacements += 1
 
         start = marker.start + offset
         end = marker.end + offset
         updated = updated[:start] + replacement + updated[end:]
         offset += len(replacement) - (marker.end - marker.start)
 
-    return updated, len(markers)
+    return updated, len(markers), replacements
 
 
 def main() -> int:
@@ -143,14 +170,21 @@ def main() -> int:
             print(f"Skip missing: {note_path}")
             continue
 
-        updated, marker_count = process_note(
+        updated, marker_count, replacement_count = process_note(
             note_path,
             vault_path,
             attachments_dir,
             config.openai_api_key,
             config.tmdb_api_key,
         )
-        if marker_count == 0 or updated == read_note(note_path):
+        if marker_count == 0:
+            continue
+
+        if replacement_count == 0:
+            print(f"No images found for markers in: {note_path}")
+            continue
+
+        if updated == read_note(note_path):
             continue
 
         total_changes += 1

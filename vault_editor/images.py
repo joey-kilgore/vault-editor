@@ -13,8 +13,10 @@ USER_AGENT = "vault-editor/0.1.0 (https://example.com; contact=local)"
 WIKI_API = "https://commons.wikimedia.org/w/api.php"
 OPEN_LIBRARY_SEARCH = "https://openlibrary.org/search.json"
 OPEN_LIBRARY_COVER = "https://covers.openlibrary.org/b/id/{cover_id}-L.jpg"
+OPEN_LIBRARY_COVER_ISBN = "https://covers.openlibrary.org/b/isbn/{isbn}-L.jpg"
 OPENAI_IMAGE_API = "https://api.openai.com/v1/images/generations"
 TMDB_SEARCH_MOVIE = "https://api.themoviedb.org/3/search/movie"
+TMDB_SEARCH_TV = "https://api.themoviedb.org/3/search/tv"
 TMDB_IMAGE_BASE = "https://image.tmdb.org/t/p/w500"
 
 
@@ -95,6 +97,24 @@ def search_open_library_cover(query: str) -> Optional[ImageResult]:
     return ImageResult(title=title, url=url)
 
 
+def search_open_library_isbn(isbn: str) -> Optional[ImageResult]:
+    isbn = re.sub(r"[^0-9Xx]", "", isbn)
+    if not isbn:
+        return None
+
+    url = OPEN_LIBRARY_COVER_ISBN.format(isbn=isbn)
+    try:
+        response = requests.head(
+            url, timeout=15, headers={"User-Agent": USER_AGENT}, allow_redirects=True
+        )
+        if response.status_code >= 400:
+            return None
+    except requests.RequestException:
+        return None
+
+    return ImageResult(title=f"ISBN {isbn}", url=url)
+
+
 def _tmdb_headers(api_key: str) -> dict[str, str]:
     if api_key.startswith("ey"):
         return {"Authorization": f"Bearer {api_key}", "User-Agent": USER_AGENT}
@@ -123,6 +143,35 @@ def search_tmdb_poster(query: str, api_key: str) -> Optional[ImageResult]:
 
     poster_path = results[0].get("poster_path")
     title = results[0].get("title") or query
+    if not poster_path:
+        return None
+
+    url = f"{TMDB_IMAGE_BASE}{poster_path}"
+    return ImageResult(title=title, url=url)
+
+
+def search_tmdb_tv_poster(query: str, api_key: str) -> Optional[ImageResult]:
+    if not api_key:
+        return None
+
+    params = {"query": query, "include_adult": "false", "language": "en-US"}
+    if not api_key.startswith("ey"):
+        params["api_key"] = api_key
+
+    response = requests.get(
+        TMDB_SEARCH_TV,
+        params=params,
+        timeout=20,
+        headers=_tmdb_headers(api_key),
+    )
+    response.raise_for_status()
+    data = response.json()
+    results = data.get("results", [])
+    if not results:
+        return None
+
+    poster_path = results[0].get("poster_path")
+    title = results[0].get("name") or query
     if not poster_path:
         return None
 

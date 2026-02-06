@@ -22,9 +22,19 @@ Open Library (book covers):
 <!-- BOOK: The Hobbit -->
 ```
 
+Open Library (book covers by ISBN):
+```
+<!-- BOOKISBN: 9780547928227 -->
+```
+
 TMDb (movie posters):
 ```
 <!-- MOVIE: Top Gun Maverick -->
+```
+
+TMDb (TV posters):
+```
+<!-- TV: The Bear -->
 ```
 
 OpenAI (image generation):

@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Iterable, List, Optional
 
 MARKER_PATTERN = re.compile(
-    r"<!--\s*(?P<kind>IMAGE|BOOK|AIIMAGE|MOVIE)\s*:\s*(?P<query>[^|>]+?)\s*(\|\s*(?P<alt>[^>]+?)\s*)?-->",
+    r"(?P<quote>[\"'])?<!--\s*(?P<kind>IMAGE|BOOK|BOOKISBN|AIIMAGE|MOVIE|TV)\s*:\s*(?P<query>[^|>]+?)\s*(\|\s*(?P<alt>[^>]+?)\s*)?-->(?P=quote)?",
     re.IGNORECASE,
 )
 
@@ -16,6 +16,8 @@ class ImageMarker:
     kind: str
     query: str
     alt: Optional[str]
+    quoted: bool
+    quote_char: Optional[str]
     start: int
     end: int
 
@@ -28,11 +30,14 @@ def find_markers(text: str) -> List[ImageMarker]:
         alt = match.group("alt")
         if alt is not None:
             alt = alt.strip()
+        quote_char = match.group("quote")
         markers.append(
             ImageMarker(
                 kind=kind,
                 query=query,
                 alt=alt,
+                quoted=quote_char is not None,
+                quote_char=quote_char,
                 start=match.start(),
                 end=match.end(),
             )
